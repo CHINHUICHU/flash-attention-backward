@@ -1,0 +1,29 @@
+# LaTeX build files
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.nav
+*.snm
+*.vrb
+
+# Bibliography
+*.bbl
+*.blg
+*.bcf
+*.run.xml
+
+# Editors
+*~
+*.swp
+.DS_Store
+.vscode/
+.idea/
+
+# Output
+*.pdf
