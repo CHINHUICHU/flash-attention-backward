@@ -227,11 +227,9 @@ memory.
   values during computation.
 \item We need
   \begin{gather}
-\mQ \mK^\top \in R^{T \times T}, \label{eq:attention_op1}\\
-\text{SoftMax} (\mQ \mK^\top) \in R^{T \times T},
-\label{eq:attention_op2}\\
-\text{SoftMax} (\mQ \mK^\top) \mV \in R^{T \times d}.
-\label{eq:attention_op3}
+\mQ \mK^\top \in R^{T \times T} \label{eq:attention_op1}\\
+\text{SoftMax} (\mQ \mK^\top) \in R^{T \times T} \label{eq:attention_op2}\\
+\text{SoftMax} (\mQ \mK^\top) \mV \in R^{T \times d} \label{eq:attention_op3}
   \end{gather}
 \item As in general
   \begin{equation*}
@@ -362,10 +360,9 @@ and write results back to secondary memory, and
 \item Load $Q, K, \text{ and } V$ to main memory.
 \item For $i = 1, \ldots, T$, calculate
   \begin{gather}
-\mQ_{i,:} \mK^\top \in R^{1\times T}, \label{eq:Nd1}\\
-\text{SoftMax} (\mQ_{i,:} \mK^\top) \in R^{1\times T},\label{eq:Nd2}
-\\
-\text{SoftMax} (\mQ_{i,:} \mK^\top) \mV \in R^{1\times d}\label{eq:Nd3}
+\mQ_{i,:} \mK^\top \in R^{1\times T} \label{eq:Nd1}\\
+\text{SoftMax} (\mQ_{i,:} \mK^\top) \in R^{1\times T} \label{eq:Nd2}\\
+\text{SoftMax} (\mQ_{i,:} \mK^\top) \mV \in R^{1\times d} \label{eq:Nd3}
 \end{gather}
 and store the $i$th row of the output matrix to the secondary memory.
 \end{itemize}
@@ -930,14 +927,13 @@ $ \forall t \in J_1 \cup \cdots \cup J_{j-1}$,
 
 \section{Standard Attention Backward Pass}
 
-
 \begin{frame}[allowframebreaks]
 \frametitle{Backward Pass: Problem Setup}
 \begin{itemize}
 \item Given the forward pass computation:
   \begin{align}
-    \mS &= \mQ \mK^\top \\
-    \mP &= \text{SoftMax}(\mS) \\
+    \mS &= \mQ \mK^\top \label{eq:s_eq}\\
+    \mP &= \text{SoftMax}(\mS) \label{eq:softmax_eq}\\
     \mO &= \mP \mV \label{eq:output_eq}
   \end{align}
 \item We have the output gradient
@@ -945,20 +941,20 @@ $ \forall t \in J_1 \cup \cdots \cup J_{j-1}$,
     \frac{\partial L}{\partial \mO}
   \end{equation*}
   from the subsequent layers, where $L$ is the loss function
-\item \textbf{Goal}: Compute the input gradients
+\item Goal: Compute the input gradients
   \begin{equation*}
     \frac{\partial L}{\partial \mQ}, \quad \frac{\partial L}{\partial \mK}, \quad \text{and} \quad \frac{\partial L}{\partial \mV}
   \end{equation*}
+\item We will compute the gradients w.r.t. $\mQ$, $\mK$, and $\mV$ through autodiff reverse mode. For illustration, we use $T=2$, $d=1$ for computational graphs.
 \end{itemize}
 \end{frame}
 
 
 \begin{frame}[allowframebreaks]
-\frametitle{Gradient w.r.t. V: Computational Graph ($\frac{\partial L}{\partial \mV}$)}
+\frametitle{Gradient w.r.t. V: ($\frac{\partial L}{\partial \mV}$)}
 \begin{itemize}
 \item From \eqref{eq:output_eq}, we have $O_{ik} = \sum_{j=1}^T P_{ij} V_{jk}$ for each output element, where $i$ = $1, \ldots, T$ and $k$ = $1, \ldots, d$.
 \item Each $V_{jk}$ affects multiple outputs $O_{ik}$ (for all positions $i$)
-\item We compute the gradient w.r.t. $V_{jk}$ through autodiff reverse mode. For simplicity, consider $T=2$, $d=1$.
 \end{itemize}
 
 \begin{center}
@@ -1007,10 +1003,6 @@ $ \forall t \in J_1 \cup \cdots \cup J_{j-1}$,
 
 \end{tikzpicture}
 \end{center}
-\end{frame}
-
-\begin{frame}[allowframebreaks]
-\frametitle{Computational Graph Node Values}
 \begin{itemize}
 \item Intermediate nodes represent element-wise products:
   \begin{align*}
@@ -1023,10 +1015,6 @@ $ \forall t \in J_1 \cup \cdots \cup J_{j-1}$,
   \end{align*}
 
 \end{itemize}
-\end{frame}
-
-\begin{frame}[allowframebreaks]
-\frametitle{Gradient w.r.t. V: Computational Graph ($\frac{\partial L}{\partial \mV}$)}
 \begin{itemize}
 \item $V_{11}$ affects $L$ through $v_1$ and $v_3$. Using chain rule:
 \begin{align*}
@@ -1035,29 +1023,21 @@ $ \forall t \in J_1 \cup \cdots \cup J_{j-1}$,
 &= \sum_{i=1}^T P_{i1} \frac{\partial L}{\partial O_{i1}}
 \end{align*}
 \end{itemize}
-\end{frame}
-
-\begin{frame}[allowframebreaks]
-\frametitle{Gradient w.r.t. V: Element-wise Operations ($\frac{\partial L}{\partial \mV}$)}
-
 \vspace{1cm}
 \begin{itemize}
-\item Follow the same procedure for each element of $V$, we get:
+\item Extending the derivation for each element of $V$, we get:
   \begin{equation*}
     \frac{\partial L}{\partial V_{jk}} = \sum_{i=1}^T \frac{\partial L}{\partial O_{ik}} P_{ij}
   \end{equation*}
 
 \item This is exactly the $(j,k)$-th element of matrix product
   \begin{equation*}
-    \mP^\top \frac{\partial L}{\partial \mO}:
-  \end{equation*}
-  \begin{equation*}
     \left(\mP^\top \frac{\partial L}{\partial \mO}\right)_{jk} = \sum_{i=1}^T P_{ij} \frac{\partial L}{\partial O_{ik}}
   \end{equation*}
 
-\item \textbf{Result}:
+\item Therefore, we have:
   \begin{equation*}
-    \boxed{\frac{\partial L}{\partial \mV} = \mP^\top \frac{\partial L}{\partial \mO}}
+    \frac{\partial L}{\partial \mV} = \mP^\top \frac{\partial L}{\partial \mO}
   \end{equation*}
 \end{itemize}
 \end{frame}
@@ -1065,7 +1045,7 @@ $ \forall t \in J_1 \cup \cdots \cup J_{j-1}$,
 \begin{frame}[allowframebreaks]
 \frametitle{Gradient w.r.t. P ($\frac{\partial L}{\partial \mP}$)}
 \begin{itemize}
-\item From $O_{ik} = \sum_{j=1}^T P_{ij} V_{jk}$, we get:
+\item Similarly, we can get the gradient w.r.t. P:
   \begin{equation*}
     \frac{\partial L}{\partial P_{ij}} = \sum_{k=1}^d \frac{\partial L}{\partial O_{ik}} \frac{\partial O_{ik}}{\partial P_{ij}} = \sum_{k=1}^d \frac{\partial L}{\partial O_{ik}} V_{jk}
   \end{equation*}
@@ -1077,107 +1057,199 @@ $ \forall t \in J_1 \cup \cdots \cup J_{j-1}$,
 \end{frame}
 
 \begin{frame}[allowframebreaks]
-\frametitle{SoftMax Backward - The Two Paths}
+\frametitle{Gradient w.r.t. S ($\frac{\partial L}{\partial \mS}$)}
 \begin{itemize}
-\item Now we need $\frac{\partial L}{\partial \mS}$ from $\frac{\partial L}{\partial \mP}$ through $\mP = \text{SoftMax}(\mS)$
-\item Each $S_{ij}$ affects \textbf{ALL} probabilities in row $i$ due to normalization
-\item For $P_{ij} = \frac{\exp(S_{ij})}{\sum_{k=1}^T \exp(S_{ik})}$, consider how $S_{ij}$ affects $P_{ik}$ for all $k$
-\item \textbf{Two paths from $S_{ij}$ to loss $L$}:
-  \begin{enumerate}
-  \item \textbf{Direct path}: $S_{ij} \to P_{ij} \to L$
-  \item \textbf{Normalization paths}: $S_{ij} \to P_{ik}$ (for $k \neq j$) $\to L$
-  \end{enumerate}
-\end{itemize}
-\end{frame}
+\item Now we need 
+  \begin{equation*}
+    \frac{\partial L}{\partial \mS} \quad \text { from } \quad \frac{\partial L}{\partial \mP} \quad \text { using } \quad \eqref{eq:softmax_eq}
+  \end{equation*}
 
-\begin{frame}[allowframebreaks]
-\frametitle{SoftMax Gradient Calculation: Computational Graph}
-\begin{itemize}
-\item \textbf{Two computational paths for SoftMax gradients}:
 \end{itemize}
 
 \begin{center}
 \begin{tikzpicture}[
   auto,
-  vertex/.style={draw,rectangle,minimum width=1.1cm,minimum height=0.5cm,thick},
-  every label/.append style={font=\small}
+  intermediate/.style={draw,circle,minimum width=0.8cm,thick,font=\small},
+  every label/.append style={font=\scriptsize}
 ]
-  % Input layer - attention scores (simplified)
-  \node[vertex] (S) at (0,1) {$S_{ij}$};
-  \node[vertex] (Sother) at (0,-1) {$S_{ik}$};
+  % Input labels (text only)
+  \node[font=\small] (s1) at (0,3) {$S_{11}$};
+  \node[font=\small] (s2) at (0,2) {$S_{12}$};
+  \node[font=\small] (s3) at (0,1) {$S_{21}$};
+  \node[font=\small] (s4) at (0,0) {$S_{22}$};
 
-  % Exponential layer
-  \node[vertex] (Exp) at (2.2,1) {$e^{S_{ij}}$};
-  \node[vertex] (ExpOther) at (2.2,-1) {$e^{S_{ik}}$};
+  % Intermediate nodes (exponentials)
+  \node[intermediate] (v1) at (3,3) {$v_1$};
+  \node[intermediate] (v2) at (3,2) {$v_2$};
+  \node[intermediate] (v3) at (3,1) {$v_3$};
+  \node[intermediate] (v4) at (3,0) {$v_4$};
 
-  % Normalization sum
-  \node[vertex] (Sum) at (4.4,0) {$\sum_k e^{S_{ik}}$};
+  % Row sum nodes
+  \node[intermediate] (v5) at (6,2.5) {$v_5$};
+  \node[intermediate] (v6) at (6,0.5) {$v_6$};
 
-  % Probability layer
-  \node[vertex] (P) at (6.6,1) {$P_{ij}$};
-  \node[vertex] (POther) at (6.6,-1) {$P_{ik}$};
-
-  % Loss
-  \node[vertex] (L) at (8.8,0) {$L$};
+  % Output nodes (probabilities)
+  \node[font=\small] (p1) at (9,3) {$P_{11}$};
+  \node[font=\small] (p2) at (9,2) {$P_{12}$};
+  \node[font=\small] (p3) at (9,1) {$P_{21}$};
+  \node[font=\small] (p4) at (9,0) {$P_{22}$};
 
   % Forward edges
   \path[-{Stealth[scale=0.8]}]
-    (S) edge (Exp)
-    (Sother) edge (ExpOther)
-    (Exp) edge (Sum)
-    (ExpOther) edge (Sum)
-    (Exp) edge (P)
-    (Sum) edge (P)
-    (Sum) edge (POther)
-    (ExpOther) edge (POther)
-    (P) edge (L)
-    (POther) edge (L);
+    (s1) edge (v1)
+    (s2) edge (v2)
+    (s3) edge (v3)
+    (s4) edge (v4)
+    (v1) edge (v5)
+    (v2) edge (v5)
+    (v3) edge (v6)
+    (v4) edge (v6)
+    (v1) edge[bend left=20] (p1)
+    (v5) edge (p1)
+    (v2) edge[bend right=20] (p2)
+    (v5) edge (p2)
+    (v3) edge[bend left=20] (p3)
+    (v6) edge (p3)
+    (v4) edge[bend right=20] (p4)
+    (v6) edge (p4);
 
-  % Backward gradients (dashed)
-  \path[-{Stealth[scale=0.8]},dashed,color=red]
-    (L) edge[bend left=15] (P)
-    (L) edge[bend right=15] (POther);
-
-  % Path highlighting with simpler boxes
-  \draw[color=blue, thick] (S) -- (Exp) -- (P) -- (L);
-  \node[color=blue,font=\small] at (4.4,1.8) {Direct Path: $S_{ij} \to e^{S_{ij}} \to P_{ij} \to L$};
-
-  \draw[color=red, thick] (S) -- (Exp) -- (Sum) -- (POther) -- (L);
-  \node[color=red,font=\small] at (4.4,-1.8) {Normalization Path: affects all $P_{ik}$};
 \end{tikzpicture}
 \end{center}
 
 \begin{itemize}
-\item \textbf{Path 1 (Direct)}: $S_{ij} \to P_{ij} \to L$
-  \begin{align}
-    \frac{\partial P_{ij}}{\partial S_{ij}} &= P_{ij}(1 - P_{ij})
-  \end{align}
-\item \textbf{Path 2 (Normalization)}: $S_{ij} \to P_{ik} \to L$ for $k \neq j$
-  \begin{align}
-    \frac{\partial P_{ik}}{\partial S_{ij}} &= -P_{ij}P_{ik}
-  \end{align}
+\item Node definitions:
+  \begin{align*}
+    v_1 &= e^{S_{11}}, \quad v_2 = e^{S_{12}}, \quad v_3 = e^{S_{21}}, \quad v_4 = e^{S_{22}} \\
+    v_5 &= v_1 + v_2 = e^{S_{11}} + e^{S_{12}} \quad \\
+    v_6 &= v_3 + v_4 = e^{S_{21}} + e^{S_{22}} \quad \\
+    P_{11} &= \frac{v_1}{v_5}, \quad P_{12} = \frac{v_2}{v_5}, \quad P_{21} = \frac{v_3}{v_6}, \quad P_{22} = \frac{v_4}{v_6}
+  \end{align*}
+\end{itemize}
+
+\begin{itemize}
+\item From the computational graph, $S_{11}$ affects $L$ through both $P_{11}$ and $P_{12}$:
+  \begin{equation*}
+    \frac{\partial L}{\partial S_{11}} = \frac{\partial L}{\partial P_{11}} \frac{\partial P_{11}}{\partial S_{11}} + \frac{\partial L}{\partial P_{12}} \frac{\partial P_{12}}{\partial S_{11}}
+  \end{equation*}
+\item Therefore, we need to compute 
+
+  \begin{equation*}
+    \frac{\partial P_{11}}{\partial S_{11}} \quad \text{and} \quad \frac{\partial P_{12}}{\partial S_{11}}
+  \end{equation*}
+\end{itemize}
+
+\begin{itemize}
+\item Path 1: $S_{11} \to v_1 \to P_{11}$
+  \begin{align*}
+    \frac{\partial P_{11}}{\partial S_{11}} &= \frac{\partial}{\partial S_{11}}\left(\frac{v_1}{v_5}\right) = \frac{v_5 \frac{\partial v_1}{\partial S_{11}} - v_1 \frac{\partial v_5}{\partial S_{11}}}{v_5^2} \\
+    &= \frac{v_5 \cdot e^{S_{11}} - v_1 \cdot e^{S_{11}}}{v_5^2} = \frac{e^{S_{11}}(v_5 - v_1)}{v_5^2} \\
+    &= \frac{e^{S_{11}} \cdot v_2}{v_5^2} = \frac{v_1 \cdot v_2}{v_5^2} = P_{11}(1 - P_{11})
+  \end{align*}
+\end{itemize}
+
+\begin{itemize}
+\item Path 2: $S_{11} \to v_1 \to v_5 \to P_{12}$
+  \begin{align*}
+    \frac{\partial P_{12}}{\partial S_{11}} &= \frac{\partial}{\partial S_{11}}\left(\frac{v_2}{v_5}\right) = \frac{v_5 \frac{\partial v_2}{\partial S_{11}} - v_2 \frac{\partial v_5}{\partial S_{11}}}{v_5^2} \\
+    &= \frac{v_5 \cdot 0 - v_2 \cdot e^{S_{11}}}{v_5^2} = \frac{-v_2 \cdot v_1}{v_5^2} = -P_{12} P_{11}
+  \end{align*}
+\end{itemize}
+
+\begin{itemize}
+\item Substituting back into the total gradient:
+  \begin{align*}
+    \frac{\partial L}{\partial S_{11}} &= \frac{\partial L}{\partial P_{11}} \cdot P_{11}(1 - P_{11}) + \frac{\partial L}{\partial P_{12}} \cdot (-P_{12} P_{11}) \\
+    &= P_{11} \left( \frac{\partial L}{\partial P_{11}} (1 - P_{11}) - \frac{\partial L}{\partial P_{12}} P_{12} \right) \\
+    &= P_{11} \left( \frac{\partial L}{\partial P_{11}} - P_{11}\frac{\partial L}{\partial P_{11}} - P_{12}\frac{\partial L}{\partial P_{12}} \right) \\
+    &= P_{11} \left( \frac{\partial L}{\partial P_{11}} - \sum_{k=1}^2 P_{1k}\frac{\partial L}{\partial P_{1k}} \right)
+  \end{align*}
+\end{itemize}
+
+\begin{itemize}
+\item Generalizing to any $S_{ij}$, we get the general SoftMax gradient formula:
+  \begin{equation*}
+    \frac{\partial L}{\partial S_{ij}} = P_{ij} \left( \frac{\partial L}{\partial P_{ij}} - \sum_{k=1}^T P_{ik}\frac{\partial L}{\partial P_{ik}} \right)
+  \end{equation*}
 \end{itemize}
 \end{frame}
 
 \begin{frame}[allowframebreaks]
-\frametitle{SoftMax Gradient Calculation: Final Result}
+\frametitle{Gradient w.r.t. K ($\frac{\partial L}{\partial \mK}$)}
 \begin{itemize}
-\item Combining both paths using chain rule:
-  \begin{align}
-    \frac{\partial L}{\partial S_{ij}} &= \frac{\partial L}{\partial P_{ij}} P_{ij}(1 - P_{ij}) + \sum_{k \neq j} \frac{\partial L}{\partial P_{ik}} (-P_{ij}P_{ik}) \\
-    &= P_{ij} \left( \frac{\partial L}{\partial P_{ij}} - \sum_{k=1}^T \frac{\partial L}{\partial P_{ik}} P_{ik} \right)
-  \end{align}
+\item From \eqref{eq:s_eq}, we have $S_{ij} = \sum_{\ell=1}^d Q_{i\ell} K_{j\ell}$
 \end{itemize}
-\end{frame}
 
-\begin{frame}[allowframebreaks]
-\frametitle{Gradient w.r.t. K}
+\begin{center}
+\begin{tikzpicture}[
+  auto,
+  intermediate/.style={draw,circle,minimum width=0.8cm,thick,font=\small},
+  every label/.append style={font=\scriptsize}
+]
+  % Input labels (text only)
+  \node[font=\small] (q1) at (0,2.5) {$Q_{11}$};
+  \node[font=\small] (q2) at (0,1.5) {$Q_{21}$};
+  \node[font=\small] (k1) at (0,0.5) {$K_{11}$};
+  \node[font=\small] (k2) at (0,-0.5) {$K_{21}$};
+
+  % Intermediate nodes (products)
+  \node[intermediate] (v1) at (3,2.5) {$v_1$};
+  \node[intermediate] (v2) at (3,1.5) {$v_2$};
+  \node[intermediate] (v3) at (3,0.5) {$v_3$};
+  \node[intermediate] (v4) at (3,-0.5) {$v_4$};
+
+  % Output nodes (attention scores)
+  \node[font=\small] (s11) at (6,2.5) {$S_{11}$};
+  \node[font=\small] (s12) at (6,1.5) {$S_{12}$};
+  \node[font=\small] (s21) at (6,0.5) {$S_{21}$};
+  \node[font=\small] (s22) at (6,-0.5) {$S_{22}$};
+
+  % Forward edges
+  \path[-{Stealth[scale=0.8]}]
+    (q1) edge (v1)
+    (k1) edge (v1)
+    (q1) edge (v2)
+    (k2) edge (v2)
+    (q2) edge (v3)
+    (k1) edge (v3)
+    (q2) edge (v4)
+    (k2) edge (v4)
+    (v1) edge (s11)
+    (v2) edge (s12)
+    (v3) edge (s21)
+    (v4) edge (s22);
+
+\end{tikzpicture}
+\end{center}
+
 \begin{itemize}
-\item From $\mS = \mQ \mK^\top$, we have $S_{ij} = \sum_{\ell=1}^d Q_{i\ell} K_{j\ell}$
-\item \textbf{Gradient w.r.t. K}:
-  \begin{align}
-    \frac{\partial L}{\partial K_{j\ell}} &= \sum_{i=1}^T \frac{\partial L}{\partial S_{ij}} \frac{\partial S_{ij}}{\partial K_{j\ell}} = \sum_{i=1}^T \frac{\partial L}{\partial S_{ij}} Q_{i\ell}
-  \end{align}
+\item Node definitions:
+  \begin{align*}
+    v_1 &= Q_{11} \times K_{11} = S_{11}, \quad v_2 = Q_{11} \times K_{21} = S_{12} \\
+    v_3 &= Q_{21} \times K_{11} = S_{21}, \quad v_4 = Q_{21} \times K_{21} = S_{22} \\
+  \end{align*}
+\end{itemize}
+
+\begin{itemize}
+\item From the computational graph, $K_{11}$ affects $L$ through both $S_{11}$ and $S_{21}$:
+  \begin{equation*}
+    \frac{\partial L}{\partial K_{11}} = \frac{\partial L}{\partial S_{11}} \frac{\partial S_{11}}{\partial K_{11}} + \frac{\partial L}{\partial S_{21}} \frac{\partial S_{21}}{\partial K_{11}}
+  \end{equation*}
+\item Since $S_{11} = Q_{11} K_{11}$ and $S_{21} = Q_{21} K_{11}$:
+  \begin{align*}
+    \frac{\partial S_{11}}{\partial K_{11}} &= Q_{11} \\
+    \frac{\partial S_{21}}{\partial K_{11}} &= Q_{21}
+  \end{align*}
+\item Therefore:
+  \begin{equation*}
+    \frac{\partial L}{\partial K_{11}} = \frac{\partial L}{\partial S_{11}} Q_{11} + \frac{\partial L}{\partial S_{21}} Q_{21} = \sum_{i=1}^2 \frac{\partial L}{\partial S_{i1}} Q_{i1}
+  \end{equation*}
+\end{itemize}
+
+\begin{itemize}
+\item Generalizing to any $K_{j\ell}$:
+  \begin{equation*}
+    \frac{\partial L}{\partial K_{j\ell}} = \sum_{i=1}^T \frac{\partial L}{\partial S_{ij}} Q_{i\ell}
+  \end{equation*}
 \item In matrix form:
   \begin{equation*}
     \frac{\partial L}{\partial \mK} = \mQ^\top \frac{\partial L}{\partial \mS}
@@ -1186,12 +1258,12 @@ $ \forall t \in J_1 \cup \cdots \cup J_{j-1}$,
 \end{frame}
 
 \begin{frame}[allowframebreaks]
-\frametitle{Gradient w.r.t. Q}
+\frametitle{Gradient w.r.t. Q: ($\frac{\partial L}{\partial \mQ}$)}
 \begin{itemize}
-\item \textbf{Gradient w.r.t. Q}:
-  \begin{align}
+\item Similarly, we can get the gradient w.r.t. Q:
+  \begin{align*}
     \frac{\partial L}{\partial Q_{i\ell}} &= \sum_{j=1}^T \frac{\partial L}{\partial S_{ij}} \frac{\partial S_{ij}}{\partial Q_{i\ell}} = \sum_{j=1}^T \frac{\partial L}{\partial S_{ij}} K_{j\ell}
-  \end{align}
+  \end{align*}
 \item In matrix form:
   \begin{equation*}
     \frac{\partial L}{\partial \mQ} = \frac{\partial L}{\partial \mS} \mK
@@ -1200,112 +1272,157 @@ $ \forall t \in J_1 \cup \cdots \cup J_{j-1}$,
 \end{frame}
 
 \begin{frame}[allowframebreaks]
-\frametitle{Assumptions for Backward Pass Algorithm}
+\frametitle{Assumptions for Standard Attention Backward Pass}
 \begin{itemize}
-\item Intermediate matrices $\mP$, $\mS$ and $\frac{\partial L}{\partial \mO}$ are stored in HBM
-\item The operations are done in blocks
+\item The intermediate matrices $\mP$, $\mS$, the output $\mO$, and the output gradient
+\begin{equation*}
+  \frac{\partial L}{\partial \mO}
+\end{equation*}
+are stored in HBM
+\item The operations are done in blocks of size $|B|$, where $B$ denotes a block index set
+\item Memory constraint: $d \leq M \leq Td$ where $M$ is the SRAM size
+\end{itemize}
+\end{frame}
+
+\begin{frame}[allowframebreaks]
+\frametitle{Block Size Derivation for Standard Attention Backward Pass}
+\begin{itemize}
+\item For computing $|B|$ rows of 
+\begin{equation*}
+  \frac{\partial L}{\partial \mV}
+\end{equation*}
+: we need 3 blocks in the main memory
+
+  \begin{enumerate}
+  \item Block 1:
+  \begin{equation*}
+    \frac{\partial L}{\partial \mV_{B,:}} \in \R^{|B| \times d}
+  \end{equation*}
+  \item Block 2:
+  \begin{equation*}
+    \mP_{:,B} \in \R^{|B| \times |B|} \text{ (loaded from HBM)}
+  \end{equation*}
+  \item Block 3:
+  \begin{equation*}
+    \frac{\partial L}{\partial \mO_{B,:}} \in \R^{|B| \times d} \text{ (loaded from HBM)}
+  \end{equation*}
+  \end{enumerate}
+  From constraints 
+  \begin{equation*}
+    |B|d \leq \frac{M}{3} \text{ and } |B|^2 \leq \frac{M}{3}
+  \end{equation*}
+  we get:
+  \begin{equation*}
+    |B| = \min\left(\lfloor \frac{M}{3d} \rfloor, \lfloor \sqrt{\frac{M}{3}} \rfloor\right)
+  \end{equation*}
 \end{itemize}
 \end{frame}
 
 \begin{frame}[allowframebreaks]
 \frametitle{Standard Attention Backward Algorithm}
+Let $N_b = \lceil \frac{T}{|B|} \rceil$ be the number of blocks. We have the following algorithm:
+
 \begin{itemize}
-\item
-  \begin{equation*}
-    \frac{\partial L}{\partial \mV} = \mP^\top \frac{\partial L}{\partial \mO}
-  \end{equation*}
-\item
-  \begin{equation*}
-    \frac{\partial L}{\partial \mP} = \frac{\partial L}{\partial \mO} \mV^\top
-  \end{equation*}
-\item For $i = 1, \ldots, T$
+\item Step 1: Gradient w.r.t. V
   \begin{itemize}
-  \item
-    \begin{equation*}
-      \text{sum} \leftarrow \left\langle \frac{\partial L}{\partial \mP_{i,:}}, P_{i,:} \right\rangle
-    \end{equation*}
-  \item For $j = 1, \ldots, T$
+  \item For $j = 1, \ldots, N_b$ (column blocks of V, where $J_j$ denotes the $j$-th block)
     \begin{itemize}
-    \item
+    \item Initialize $\frac{\partial L}{\partial \mV_{J_j,:}} = 0$
+    \item For $i = 1, \ldots, N_b$ (row blocks of P, where $I_i$ denotes the $i$-th block)
       \begin{equation*}
-        \frac{\partial L}{\partial S_{ij}} \leftarrow P_{ij} \left( \frac{\partial L}{\partial P_{ij}} - \text{sum} \right)
+        \frac{\partial L}{\partial \mV_{J_j,:}} \mathrel{+}= \mP_{I_i,J_j}^\top \frac{\partial L}{\partial \mO_{I_i,:}}
       \end{equation*}
+    \item Save $\frac{\partial L}{\partial \mV_{J_j,:}}$ to HBM
     \end{itemize}
   \end{itemize}
-\item
-  \begin{equation*}
-    \frac{\partial L}{\partial \mK} = \mQ^\top \frac{\partial L}{\partial \mS}
-  \end{equation*}
-\item
-  \begin{equation*}
-    \frac{\partial L}{\partial \mQ} = \frac{\partial L}{\partial \mS} \mK
-  \end{equation*}
-\end{itemize}
-\end{frame}
 
-\begin{frame}[allowframebreaks]
-\frametitle{Standard Attention Backward: Computational Complexity}
-\begin{itemize}
-\item \textbf{Step 1}:
-  \begin{equation*}
-    \frac{\partial L}{\partial \mV} = \mP^\top \frac{\partial L}{\partial \mO}
-  \end{equation*}
-  - $O(T^2 d)$ FLOPs
-\item \textbf{Step 2}:
-  \begin{equation*}
-    \frac{\partial L}{\partial \mP} = \frac{\partial L}{\partial \mO} \mV^\top
-  \end{equation*}
-  - $O(T^2 d)$ FLOPs
-\item \textbf{Step 3}: SoftMax backward computation - $O(T^2)$ FLOPs
-\item \textbf{Step 4}:
-  \begin{equation*}
-    \frac{\partial L}{\partial \mK} = \mQ^\top \frac{\partial L}{\partial \mS} \quad \text{and} \quad \frac{\partial L}{\partial \mQ} = \frac{\partial L}{\partial \mS} \mK
-  \end{equation*}
-  - $O(T^2 d)$ FLOPs
-\item \textbf{Overall complexity}: $O(T^2 d)$ operations
-\end{itemize}
-\end{frame}
-
-\begin{frame}[allowframebreaks]
-\frametitle{Standard Attention Backward: I/O Analysis}
-\begin{itemize}
-\item \textbf{Detailed I/O operations}:
-  \begin{enumerate}
-  \item \textbf{Load} $\mP \in \mathbb{R}^{T \times T}$ for computing
-    \begin{equation*}
-      \frac{\partial L}{\partial \mV}
-    \end{equation*}
-    $O(T^2)$ reads
-  \item \textbf{Store}
-    \begin{equation*}
-      \frac{\partial L}{\partial \mP} \in \mathbb{R}^{T \times T}
-    \end{equation*}
-    $O(T^2)$ writes
-  \item \textbf{Load} $\mP$ again for SoftMax backward computation: $O(T^2)$ reads
-  \item \textbf{Load}
-    \begin{equation*}
-      \frac{\partial L}{\partial \mP}
-    \end{equation*}
-    for SoftMax backward: $O(T^2)$ reads
-  \item \textbf{Store}
-    \begin{equation*}
-      \frac{\partial L}{\partial \mS} \in \mathbb{R}^{T \times T}
-    \end{equation*}
-    $O(T^2)$ writes
-  \item \textbf{Load}
-    \begin{equation*}
-      \frac{\partial L}{\partial \mS}
-    \end{equation*}
-    for computing gradients w.r.t. $\mK$ and $\mQ$: $O(T^2)$ reads
-  \end{enumerate}
-\item \textbf{Total I/O cost}: $6 \times O(T^2) = O(T^2)$ memory accesses
-\item \textbf{Performance bottleneck}:
+\vspace{0.5cm}
+\item Step 2: Gradient w.r.t. P
   \begin{itemize}
-  \item Computation: $O(T^2 d)$ FLOPs
-  \item Memory access: $O(T^2)$ elements
-  \item \textbf{When $d$ is small}: memory access dominates!
+  \item For $i = 1, \ldots, N_b$ (row blocks of P)
+    \begin{itemize}
+    \item Initialize $\frac{\partial L}{\partial \mP_{I_i,:}} = 0$
+    \item For $j = 1, \ldots, N_b$ (column blocks of V)
+      \begin{equation*}
+        \frac{\partial L}{\partial \mP_{I_i,J_j}} = \frac{\partial L}{\partial \mO_{I_i,:}} \mV_{J_j,:}^\top
+      \end{equation*}
+    \item Save $\frac{\partial L}{\partial \mP_{I_i,:}}$ to HBM
+    \end{itemize}
   \end{itemize}
-\item The $T \times T$ attention matrix is the bottleneck for both forward and backward passes
+
+\vspace{1cm}
+\item Step 3: Gradient w.r.t. S
+  \begin{itemize}
+  \item For $i = 1, \ldots, N_b$
+    \begin{itemize}
+    \item Compute row-wise sum: $\text{sum}_{I_i} = \sum_{j=1}^T \frac{\partial L}{\partial P_{ij}} P_{ij}$ (element-wise product and sum)
+    \item For $j = 1, \ldots, N_b$
+      \begin{equation*}
+        \frac{\partial L}{\partial \mS_{I_i,J_j}} = \mP_{I_i,J_j} \odot \left( \frac{\partial L}{\partial \mP_{I_i,J_j}} - \text{sum}_{I_i} \right)
+      \end{equation*}
+    \item Save $\frac{\partial L}{\partial \mS_{I_i,J_j}}$ to HBM
+    \end{itemize}
+  \end{itemize}
+
+\item Step 4: Gradient w.r.t. K
+  \begin{itemize}
+  \item For $j = 1, \ldots, N_b$ (column blocks of K)
+    \begin{itemize}
+    \item Initialize $\frac{\partial L}{\partial \mK_{J_j,:}} = 0$
+    \item For $i = 1, \ldots, N_b$ (row blocks of Q)
+      \begin{equation*}
+        \frac{\partial L}{\partial \mK_{J_j,:}} \mathrel{+}= \mQ_{I_i,:}^\top \frac{\partial L}{\partial \mS_{I_i,J_j}}
+      \end{equation*}
+    \item Save $\frac{\partial L}{\partial \mK_{J_j,:}}$ to HBM
+    \end{itemize}
+  \end{itemize}
+
+\item Step 5: Gradient w.r.t. Q
+  \begin{itemize}
+  \item For $i = 1, \ldots, N_b$ (row blocks of Q)
+    \begin{itemize}
+    \item Initialize $\frac{\partial L}{\partial \mQ_{I_i,:}} = 0$
+    \item For $j = 1, \ldots, N_b$ (column blocks of K)
+      \begin{equation*}
+        \frac{\partial L}{\partial \mQ_{I_i,:}} \mathrel{+}= \frac{\partial L}{\partial \mS_{I_i,J_j}} \mK_{J_j,:}
+      \end{equation*}
+    \item Save $\frac{\partial L}{\partial \mQ_{I_i,:}}$ to HBM
+    \end{itemize}
+  \end{itemize}
+\end{itemize}
+\end{frame}
+
+\begin{frame}[allowframebreaks]
+\frametitle{Computational Complexity Analysis}
+\begin{itemize}
+\item Steps 1, 2, 4, 5:
+  \begin{equation*}
+    O(N_b) \times O(N_b) \times O(|B|^2 \times d) = O(T^2 \times d)
+  \end{equation*}
+\item Step 3:
+  \begin{equation*}
+    O(N_b) \times O(N_b) \times O(|B|^2) = O(T^2 \times |B|^2)
+  \end{equation*}
+
+\item Total Complexity: 
+  \begin{equation*}
+    O(T^2 \times d)
+  \end{equation*}
+\end{itemize}
+\end{frame}
+
+\begin{frame}[allowframebreaks]
+\frametitle{I/O Analysis}
+\begin{itemize}
+\item From algorithm, the I/O bottleneck is to read $\mP$ and write 
+\begin{equation*}
+\frac{\partial L}{\partial \mP} \text{ and } \frac{\partial L}{\partial \mS}
+\end{equation*}
+
+  \item Total I/O:
+  \begin{equation*}
+    O(T^2)
+  \end{equation*}
 \end{itemize}
 \end{frame}
 
