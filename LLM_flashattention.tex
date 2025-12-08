@@ -928,33 +928,48 @@ $ \forall t \in J_1 \cup \cdots \cup J_{j-1}$,
 \section{Standard Attention Backward Pass}
 
 \begin{frame}[allowframebreaks]
+\frametitle{Motivation for Backward Pass Analysis}
+\begin{itemize}
+\item Attention mechanisms are fundamental to transformers and modern LLMs, making efficient training critical for practical applications.
+\item Memory-optimized attention implementations often avoid storing large intermediate matrices that standard gradient computation requires, necessitating manual gradient derivation.
+\item Understanding the standard backward pass reveals memory and computational bottlenecks that motivate the development of more efficient attention algorithms.
+\end{itemize}
+\end{frame}
+
+\begin{frame}[allowframebreaks]
 \frametitle{Backward Pass: Problem Setup}
 \begin{itemize}
-\item Given the forward pass computation:
+\item We consider the standard attention forward pass computation, which consists of three sequential operations.
+\item Given input matrices $\mQ, \mK, \mV \in R^{T \times d}$, where $T$ denotes the sequence length and $d$ denotes the head dimension, the forward pass computes:
   \begin{align}
-    \mS &= \mQ \mK^\top \label{eq:s_eq}\\
-    \mP &= \text{SoftMax}(\mS) \label{eq:softmax_eq}\\
-    \mO &= \mP \mV \label{eq:output_eq}
+    \mS &= \mQ \mK^ \top \in R^{T \times T} \label{eq:s_eq}\\
+    \mP &= \text{SoftMax}(\mS) \in R^{T \times T} \label{eq:softmax_eq}\\
+    \mO &= \mP \mV \in R^{T \times d} \label{eq:output_eq}
   \end{align}
-\item We have the output gradient
+  where $\mS$ contains the attention scores, $\mP$ represents the attention probabilities, and $\mO$ is the final output.
+\item We assume that the gradient with respect to the output
   \begin{equation*}
-    \frac{\partial L}{\partial \mO}
+    \frac{\partial L}{\partial \mO} \in R^{T \times d}
   \end{equation*}
-  from the subsequent layers, where $L$ is the loss function
-\item Goal: Compute the input gradients
+  is available from subsequent layers in the neural network, where $L$ is the scalar loss function.
+\item Our objective is to compute the gradients with respect to the three input matrices:
   \begin{equation*}
     \frac{\partial L}{\partial \mQ}, \quad \frac{\partial L}{\partial \mK}, \quad \text{and} \quad \frac{\partial L}{\partial \mV}
   \end{equation*}
-\item We will compute the gradients w.r.t. $\mQ$, $\mK$, and $\mV$ through autodiff reverse mode. For illustration, we use $T=2$, $d=1$ for computational graphs.
+\item We derive these gradients by applying the chain rule through the computational graph of the attention mechanism. For illustration purposes, we use simplified dimensions $T=2$ and $d=1$ in our computational graph examples.
 \end{itemize}
 \end{frame}
 
 
 \begin{frame}[allowframebreaks]
-\frametitle{Gradient w.r.t. V: ($\frac{\partial L}{\partial \mV}$)}
+\frametitle{Gradient w.r.t. V: ($\partial L / \partial \mV$)}
 \begin{itemize}
-\item From \eqref{eq:output_eq}, we have $O_{ik} = \sum_{j=1}^T P_{ij} V_{jk}$ for each output element, where $i$ = $1, \ldots, T$ and $k$ = $1, \ldots, d$.
-\item Each $V_{jk}$ affects multiple outputs $O_{ik}$ (for all positions $i$)
+\item From \eqref{eq:output_eq}, we have 
+\begin{equation*}
+  O_{ik} = \sum_{j=1}^T P_{ij} V_{jk}
+\end{equation*}
+which defines each output element, where $i$ = $1, \ldots, T$ and $k$ = $1, \ldots, d$.
+\item Each element $V_{jk}$ affects multiple outputs $O_{ik}$ for all positions $i$, as shown in the computational graph below.
 \end{itemize}
 
 \begin{center}
@@ -1004,7 +1019,7 @@ $ \forall t \in J_1 \cup \cdots \cup J_{j-1}$,
 \end{tikzpicture}
 \end{center}
 \begin{itemize}
-\item Intermediate nodes represent element-wise products:
+\item The intermediate nodes in the computational graph represent element-wise products that we define as follows:
   \begin{align*}
     v_1 &= P_{11} \times V_{11} \\
     v_2 &= P_{12} \times V_{21} \\
@@ -1016,55 +1031,91 @@ $ \forall t \in J_1 \cup \cdots \cup J_{j-1}$,
 
 \end{itemize}
 \begin{itemize}
-\item $V_{11}$ affects $L$ through $v_1$ and $v_3$. Using chain rule:
+\item The element $V_{11}$ affects the loss $L$ through both $v_1$ and $v_3$, and we can compute its gradient using the chain rule:
 \begin{align*}
 \frac{\partial L}{\partial V_{11}} &= \frac{\partial L}{\partial v_5} \frac{\partial v_5}{\partial v_1} \frac{\partial v_1}{\partial V_{11}} + \frac{\partial L}{\partial v_6} \frac{\partial v_6}{\partial v_3} \frac{\partial v_3}{\partial V_{11}} \\[0.2cm]
 &= \frac{\partial L}{\partial O_{11}} \cdot 1 \cdot P_{11} + \frac{\partial L}{\partial O_{21}} \cdot 1 \cdot P_{21} \\[0.2cm]
 &= \sum_{i=1}^T P_{i1} \frac{\partial L}{\partial O_{i1}}
 \end{align*}
 \end{itemize}
-\vspace{1cm}
+\vspace{0.5cm}
 \begin{itemize}
-\item Extending the derivation for each element of $V$, we get:
+\item To generalize this approach, consider an arbitrary element $V_{jk}$ of the value matrix $\mV$.
+\item The element $V_{jk}$ contributes to the computation of output $O_{ik}$ for all positions $i = 1, 2, \ldots, T$ through the matrix multiplication $\mO = \mP \mV$.
+\item Specifically, each output element is computed as:
+  \begin{equation*}
+    O_{ik} = \sum_{j'=1}^T P_{ij'} V_{j'k}
+  \end{equation*}
+\item The element $V_{jk}$ appears in this sum when $j' = j$, contributing the term $P_{ij} V_{jk}$ to $O_{ik}$.
+\end{itemize}
+\vspace{0.5cm}
+\begin{itemize}
+\item Using the chain rule to compute the gradient of $V_{jk}$:
+\begin{align*}
+\frac{\partial L}{\partial V_{jk}} &= \sum_{i=1}^T \frac{\partial L}{\partial O_{ik}} \frac{\partial O_{ik}}{\partial V_{jk}} \\[0.2cm]
+&= \sum_{i=1}^T \frac{\partial L}{\partial O_{ik}} \frac{\partial}{\partial V_{jk}} \left( \sum_{j'=1}^T P_{ij'} V_{j'k} \right) \\[0.2cm]
+&= \sum_{i=1}^T \frac{\partial L}{\partial O_{ik}} P_{ij}
+\end{align*}
+\item This gives us the general formula for any element of $V$:
   \begin{equation*}
     \frac{\partial L}{\partial V_{jk}} = \sum_{i=1}^T \frac{\partial L}{\partial O_{ik}} P_{ij}
   \end{equation*}
 
-\item This is exactly the $(j,k)$-th element of matrix product
+\item This expression corresponds exactly to the $(j,k)$-th element of the matrix product:
   \begin{equation*}
     \left(\mP^\top \frac{\partial L}{\partial \mO}\right)_{jk} = \sum_{i=1}^T P_{ij} \frac{\partial L}{\partial O_{ik}}
   \end{equation*}
 
-\item Therefore, we have:
+\item Therefore, we can express the complete gradient with respect to $\mV$ as:
   \begin{equation*}
-    \frac{\partial L}{\partial \mV} = \mP^\top \frac{\partial L}{\partial \mO}
+    \frac{\partial L}{\partial \mV} = \mP^\top \frac{\partial L}{\partial \mO} \in R^{T \times d}
   \end{equation*}
 \end{itemize}
 \end{frame}
 
 \begin{frame}[allowframebreaks]
-\frametitle{Gradient w.r.t. P ($\frac{\partial L}{\partial \mP}$)}
+\frametitle{Gradient w.r.t. P ($\partial L / \partial \mP$)}
 \begin{itemize}
-\item Similarly, we can get the gradient w.r.t. P:
+\item We now derive the gradient with respect to the attention weights matrix $\mP \in R^{T \times T}$.
+\item Using the chain rule, we compute the gradient for an individual element $P_{ij}$:
   \begin{equation*}
-    \frac{\partial L}{\partial P_{ij}} = \sum_{k=1}^d \frac{\partial L}{\partial O_{ik}} \frac{\partial O_{ik}}{\partial P_{ij}} = \sum_{k=1}^d \frac{\partial L}{\partial O_{ik}} V_{jk}
+    \frac{\partial L}{\partial P_{ij}} = \sum_{k=1}^d \frac{\partial L}{\partial O_{ik}} \frac{\partial O_{ik}}{\partial P_{ij}}
   \end{equation*}
-\item In matrix form:
+\item Since:
   \begin{equation*}
-    \frac{\partial L}{\partial \mP} = \frac{\partial L}{\partial \mO} \mV^\top
+    O_{ik} = \sum_{j'=1}^T P_{ij'} V_{j'k}
+  \end{equation*}
+  we have the partial derivative:
+  \begin{equation*}
+    \frac{\partial O_{ik}}{\partial P_{ij}} = V_{jk}
+  \end{equation*}
+\item Substituting this result gives us:
+  \begin{equation*}
+    \frac{\partial L}{\partial P_{ij}} = \sum_{k=1}^d \frac{\partial L}{\partial O_{ik}} V_{jk}
+  \end{equation*}
+\item To express this in matrix form, we observe that the sum over $k$ represents the $j$-th row of $\mV$ multiplied with the $i$-th row of 
+\begin{equation*}
+  \frac{\partial L}{\partial \mO} \in R^{T \times d}
+\end{equation*}
+\item Therefore, the complete gradient matrix is:
+  \begin{equation*}
+    \frac{\partial L}{\partial \mP} = \frac{\partial L}{\partial \mO} \mV^\top \in R^{T \times T}
   \end{equation*}
 \end{itemize}
 \end{frame}
 
 \begin{frame}[allowframebreaks]
-\frametitle{Gradient w.r.t. S ($\frac{\partial L}{\partial \mS}$)}
+\frametitle{Gradient w.r.t. S ($\partial L / \partial \mS$)}
 \begin{itemize}
-\item Now we need 
-  \begin{equation*}
-    \frac{\partial L}{\partial \mS} \quad \text { from } \quad \frac{\partial L}{\partial \mP} \quad \text { using } \quad \eqref{eq:softmax_eq}
-  \end{equation*}
-
+\item We derive the gradient with respect to the attention scores matrix $\mS \in R^{T \times T}$.
+\item Given:
+\begin{equation*}
+  \frac{\partial L}{\partial \mP} \in R^{T \times T}
+\end{equation*}
+we need to propagate this gradient through the SoftMax operation in \eqref{eq:softmax_eq}.
+\item The computational graph below illustrates the SoftMax computation for a $2 \times 2$ case.
 \end{itemize}
+
 
 \begin{center}
 \begin{tikzpicture}[
@@ -1117,38 +1168,27 @@ $ \forall t \in J_1 \cup \cdots \cup J_{j-1}$,
 \end{center}
 
 \begin{itemize}
-\item Node definitions:
+\item The nodes in the computational graph are defined as follows:
   \begin{align*}
     v_1 &= e^{S_{11}}, \quad v_2 = e^{S_{12}}, \quad v_3 = e^{S_{21}}, \quad v_4 = e^{S_{22}} \\
-    v_5 &= v_1 + v_2 = e^{S_{11}} + e^{S_{12}} \quad \\
-    v_6 &= v_3 + v_4 = e^{S_{21}} + e^{S_{22}} \quad \\
+    v_5 &= v_1 + v_2 = e^{S_{11}} + e^{S_{12}} \\
+    v_6 &= v_3 + v_4 = e^{S_{21}} + e^{S_{22}} \\
     P_{11} &= \frac{v_1}{v_5}, \quad P_{12} = \frac{v_2}{v_5}, \quad P_{21} = \frac{v_3}{v_6}, \quad P_{22} = \frac{v_4}{v_6}
   \end{align*}
+\item Each row of the attention scores matrix is independently normalized to form the corresponding row of the probability matrix $\mP$.
 \end{itemize}
 
 \begin{itemize}
-\item From the computational graph, $S_{11}$ affects $L$ through both $P_{11}$ and $P_{12}$:
+\item From the computational graph, we observe that $S_{11}$ affects the loss $L$ through both $P_{11}$ and $P_{12}$:
   \begin{equation*}
     \frac{\partial L}{\partial S_{11}} = \frac{\partial L}{\partial P_{11}} \frac{\partial P_{11}}{\partial S_{11}} + \frac{\partial L}{\partial P_{12}} \frac{\partial P_{12}}{\partial S_{11}}
   \end{equation*}
-\item Therefore, we need to compute 
-
-  \begin{equation*}
-    \frac{\partial P_{11}}{\partial S_{11}} \quad \text{and} \quad \frac{\partial P_{12}}{\partial S_{11}}
-  \end{equation*}
-\end{itemize}
-
-\begin{itemize}
-\item Path 1: $S_{11} \to v_1 \to P_{11}$
+\item We compute the required partial derivatives:
   \begin{align*}
     \frac{\partial P_{11}}{\partial S_{11}} &= \frac{\partial}{\partial S_{11}}\left(\frac{v_1}{v_5}\right) = \frac{v_5 \frac{\partial v_1}{\partial S_{11}} - v_1 \frac{\partial v_5}{\partial S_{11}}}{v_5^2} \\
     &= \frac{v_5 \cdot e^{S_{11}} - v_1 \cdot e^{S_{11}}}{v_5^2} = \frac{e^{S_{11}}(v_5 - v_1)}{v_5^2} \\
     &= \frac{e^{S_{11}} \cdot v_2}{v_5^2} = \frac{v_1 \cdot v_2}{v_5^2} = P_{11}(1 - P_{11})
   \end{align*}
-\end{itemize}
-
-\begin{itemize}
-\item Path 2: $S_{11} \to v_1 \to v_5 \to P_{12}$
   \begin{align*}
     \frac{\partial P_{12}}{\partial S_{11}} &= \frac{\partial}{\partial S_{11}}\left(\frac{v_2}{v_5}\right) = \frac{v_5 \frac{\partial v_2}{\partial S_{11}} - v_2 \frac{\partial v_5}{\partial S_{11}}}{v_5^2} \\
     &= \frac{v_5 \cdot 0 - v_2 \cdot e^{S_{11}}}{v_5^2} = \frac{-v_2 \cdot v_1}{v_5^2} = -P_{12} P_{11}
@@ -1156,27 +1196,52 @@ $ \forall t \in J_1 \cup \cdots \cup J_{j-1}$,
 \end{itemize}
 
 \begin{itemize}
-\item Substituting back into the total gradient:
+\item Substituting back:
   \begin{align*}
     \frac{\partial L}{\partial S_{11}} &= \frac{\partial L}{\partial P_{11}} \cdot P_{11}(1 - P_{11}) + \frac{\partial L}{\partial P_{12}} \cdot (-P_{12} P_{11}) \\
-    &= P_{11} \left( \frac{\partial L}{\partial P_{11}} (1 - P_{11}) - \frac{\partial L}{\partial P_{12}} P_{12} \right) \\
-    &= P_{11} \left( \frac{\partial L}{\partial P_{11}} - P_{11}\frac{\partial L}{\partial P_{11}} - P_{12}\frac{\partial L}{\partial P_{12}} \right) \\
     &= P_{11} \left( \frac{\partial L}{\partial P_{11}} - \sum_{k=1}^2 P_{1k}\frac{\partial L}{\partial P_{1k}} \right)
   \end{align*}
-\end{itemize}
-
-\begin{itemize}
-\item Generalizing to any $S_{ij}$, we get the general SoftMax gradient formula:
+\item To generalize this result, we consider an arbitrary element $S_{ij}$ in a $T \times T$ attention scores matrix.
+\item Following the same chain rule approach, $S_{ij}$ affects the loss $L$ through all probability elements in row $i$:
   \begin{equation*}
-    \frac{\partial L}{\partial S_{ij}} = P_{ij} \left( \frac{\partial L}{\partial P_{ij}} - \sum_{k=1}^T P_{ik}\frac{\partial L}{\partial P_{ik}} \right)
+    \frac{\partial L}{\partial S_{ij}} = \sum_{k=1}^T \frac{\partial L}{\partial P_{ik}} \frac{\partial P_{ik}}{\partial S_{ij}}
   \end{equation*}
+\item To compute the partial derivatives 
+\begin{equation*}
+  \frac{\partial P_{ik}}{\partial S_{ij}}
+\end{equation*}
+we apply the quotient rule to the softmax expression:
+  \begin{equation*}
+    P_{ik} = \frac{e^{S_{ik}}}{\sum_{\ell=1}^T e^{S_{i\ell}}}
+  \end{equation*}
+  This yields two cases depending on whether the indices match:
+  \begin{align*}
+    \frac{\partial P_{ik}}{\partial S_{ij}} &= \begin{cases}
+      P_{ik}(1 - P_{ik}) & \text{if } k = j \\
+      -P_{ik} P_{ij} & \text{if } k \neq j
+    \end{cases}
+  \end{align*}
+\item Substituting these derivatives into the chain rule expression:
+  \begin{align*}
+    \frac{\partial L}{\partial S_{ij}} &= \frac{\partial L}{\partial P_{ij}} P_{ij}(1 - P_{ij}) + \sum_{k \neq j} \frac{\partial L}{\partial P_{ik}} (-P_{ik} P_{ij}) \\
+    &= P_{ij} \left( \frac{\partial L}{\partial P_{ij}} - \sum_{k=1}^T P_{ik}\frac{\partial L}{\partial P_{ik}} \right)
+  \end{align*}
+\item This gives us the general SoftMax gradient formula:
+  \begin{equation}
+    \frac{\partial L}{\partial S_{ij}} = P_{ij} \left( \frac{\partial L}{\partial P_{ij}} - \sum_{k=1}^T P_{ik}\frac{\partial L}{\partial P_{ik}} \right)
+    \label{eq:softmax_gradient}
+  \end{equation}
 \end{itemize}
 \end{frame}
 
 \begin{frame}[allowframebreaks]
-\frametitle{Gradient w.r.t. K ($\frac{\partial L}{\partial \mK}$)}
+\frametitle{Gradient w.r.t. K ($\partial L / \partial \mK$)}
 \begin{itemize}
-\item From \eqref{eq:s_eq}, we have $S_{ij} = \sum_{\ell=1}^d Q_{i\ell} K_{j\ell}$
+\item From \eqref{eq:s_eq}, we have the relation:
+\begin{equation*}
+S_{ij} = \sum_{\ell=1}^d Q_{i\ell} K_{j\ell}
+\end{equation*}
+\item The computational graph demonstrates how Q and K matrix elements combine through element-wise products to generate attention scores S.
 \end{itemize}
 
 \begin{center}
@@ -1230,100 +1295,207 @@ $ \forall t \in J_1 \cup \cdots \cup J_{j-1}$,
 \end{itemize}
 
 \begin{itemize}
-\item From the computational graph, $K_{11}$ affects $L$ through both $S_{11}$ and $S_{21}$:
+\item From the computational graph, we observe that $K_{11}$ affects the loss $L$ through both $S_{11}$ and $S_{21}$.
+\item Using the chain rule, we compute:
   \begin{equation*}
     \frac{\partial L}{\partial K_{11}} = \frac{\partial L}{\partial S_{11}} \frac{\partial S_{11}}{\partial K_{11}} + \frac{\partial L}{\partial S_{21}} \frac{\partial S_{21}}{\partial K_{11}}
   \end{equation*}
-\item Since $S_{11} = Q_{11} K_{11}$ and $S_{21} = Q_{21} K_{11}$:
+\item From our specific $2 \times 2$ example, we have:
+\begin{equation*}
+S_{11} = Q_{11} K_{11} \quad \text{and} \quad S_{21} = Q_{21} K_{11}
+\end{equation*}
+\item The partial derivatives are:
   \begin{align*}
     \frac{\partial S_{11}}{\partial K_{11}} &= Q_{11} \\
     \frac{\partial S_{21}}{\partial K_{11}} &= Q_{21}
   \end{align*}
-\item Therefore:
+\item Therefore, the gradient with respect to $K_{11}$ is:
   \begin{equation*}
     \frac{\partial L}{\partial K_{11}} = \frac{\partial L}{\partial S_{11}} Q_{11} + \frac{\partial L}{\partial S_{21}} Q_{21} = \sum_{i=1}^2 \frac{\partial L}{\partial S_{i1}} Q_{i1}
   \end{equation*}
 \end{itemize}
 
 \begin{itemize}
-\item Generalizing to any $K_{j\ell}$:
+\item To generalize this approach, consider an arbitrary element $K_{j\ell}$ of the key matrix $\mK$.
+\item The element $K_{j\ell}$ contributes to the computation of attention scores $S_{ij}$ for all query positions $i = 1, 2, \ldots, T$ through the matrix multiplication:
+\begin{equation*}
+S_{ij} = \sum_{\ell'=1}^d Q_{i\ell'} K_{j\ell'}
+\end{equation*}
+\item The element $K_{j\ell}$ appears in this sum when $\ell' = \ell$, contributing the term $Q_{i\ell} K_{j\ell}$ to $S_{ij}$.
+\item Using the chain rule to compute the gradient of $K_{j\ell}$:
+\begin{align*}
+\frac{\partial L}{\partial K_{j\ell}} &= \sum_{i=1}^T \frac{\partial L}{\partial S_{ij}} \frac{\partial S_{ij}}{\partial K_{j\ell}} \\[0.2cm]
+&= \sum_{i=1}^T \frac{\partial L}{\partial S_{ij}} \frac{\partial}{\partial K_{j\ell}} \left( \sum_{\ell'=1}^d Q_{i\ell'} K_{j\ell'} \right) \\[0.2cm]
+&= \sum_{i=1}^T \frac{\partial L}{\partial S_{ij}} Q_{i\ell}
+\end{align*}
+\item This gives us the general formula for any element of $K$:
   \begin{equation*}
     \frac{\partial L}{\partial K_{j\ell}} = \sum_{i=1}^T \frac{\partial L}{\partial S_{ij}} Q_{i\ell}
   \end{equation*}
-\item In matrix form:
+\item This expression corresponds exactly to the $(j,\ell)$-th element of the matrix product:
   \begin{equation*}
-    \frac{\partial L}{\partial \mK} = \mQ^\top \frac{\partial L}{\partial \mS}
+    \left(\left(\frac{\partial L}{\partial \mS}\right)^\top \mQ\right)_{j\ell} = \sum_{i=1}^T \frac{\partial L}{\partial S_{ij}} Q_{i\ell}
+  \end{equation*}
+\item Therefore, we can express the complete gradient with respect to $\mK$ as:
+  \begin{equation*}
+    \frac{\partial L}{\partial \mK} = \left(\frac{\partial L}{\partial \mS}\right)^\top \mQ \in R^{T \times d}
   \end{equation*}
 \end{itemize}
 \end{frame}
 
 \begin{frame}[allowframebreaks]
-\frametitle{Gradient w.r.t. Q: ($\frac{\partial L}{\partial \mQ}$)}
+\frametitle{Gradient w.r.t. Q: ($\partial L / \partial \mQ$)}
 \begin{itemize}
-\item Similarly, we can get the gradient w.r.t. Q:
-  \begin{align*}
-    \frac{\partial L}{\partial Q_{i\ell}} &= \sum_{j=1}^T \frac{\partial L}{\partial S_{ij}} \frac{\partial S_{ij}}{\partial Q_{i\ell}} = \sum_{j=1}^T \frac{\partial L}{\partial S_{ij}} K_{j\ell}
-  \end{align*}
-\item In matrix form:
+\item Similarly, we can derive the gradient with respect to the query matrix $\mQ$ following the same approach as for $\mK$.
+\item For an arbitrary element $Q_{i\ell}$, using the chain rule:
+\begin{align*}
+\frac{\partial L}{\partial Q_{i\ell}} &= \sum_{j=1}^T \frac{\partial L}{\partial S_{ij}} \frac{\partial S_{ij}}{\partial Q_{i\ell}} = \sum_{j=1}^T \frac{\partial L}{\partial S_{ij}} K_{j\ell}
+\end{align*}
+\item Therefore, we can express the complete gradient with respect to $\mQ$ as:
   \begin{equation*}
-    \frac{\partial L}{\partial \mQ} = \frac{\partial L}{\partial \mS} \mK
+    \frac{\partial L}{\partial \mQ} = \frac{\partial L}{\partial \mS} \mK \in R^{T \times d}
   \end{equation*}
 \end{itemize}
 \end{frame}
 
 \begin{frame}[allowframebreaks]
-\frametitle{Assumptions for Standard Attention Backward Pass}
+\frametitle{Summary of Gradient Derivations}
 \begin{itemize}
-\item The intermediate matrices $\mP$, $\mS$, the output $\mO$, and the output gradient
+\item The attention gradients are derived by applying the chain rule in reverse order of the forward pass computations.
+\item Gradients are computed backward from the loss, starting with 
 \begin{equation*}
   \frac{\partial L}{\partial \mO}
 \end{equation*}
-are stored in HBM
-\item The operations are done in blocks of size $|B|$, where $B$ denotes a block index set
-\item Memory constraint: $d \leq M \leq Td$ where $M$ is the SRAM size
+and proceeding through each operation to find the gradients with respect to $\mV, \mP, \mS, \mK,$ and $\mQ$.
+\item Key resulting gradients:
+  \begin{align}
+    \frac{\partial L}{\partial \mV} &= \mP^\top \frac{\partial L}{\partial \mO} \in R^{T \times d}\\
+    \frac{\partial L}{\partial \mP} &= \frac{\partial L}{\partial \mO} \mV^\top \in R^{T \times T} \label{eq:gradient_p}\\
+    \frac{\partial L}{\partial \mK} &= \left(\frac{\partial L}{\partial \mS}\right)^\top \mQ \in R^{T \times d} \label{eq:gradient_k}\\
+    \frac{\partial L}{\partial \mQ} &= \frac{\partial L}{\partial \mS} \mK \in R^{T \times d} \label{eq:gradient_q}
+  \end{align}
+\framebreak
+\item The SoftMax gradient has the form:
+  \begin{equation*}
+    \frac{\partial L}{\partial S_{ij}} = P_{ij} \odot \left( \frac{\partial L}{\partial P_{ij}} - \sum_{k=1}^T P_{ik}\frac{\partial L}{\partial P_{ik}} \right) \in R^{T \times T} \label{eq:gradient_s}
+  \end{equation*}
+  where the computation is performed element-wise for each $(i,j)$ position.
+\end{itemize}
+\end{frame}
+
+\begin{frame}[allowframebreaks]
+\frametitle{From Mathematical Derivations to Memory-Constrained Implementation}
+\begin{itemize}
+\item The mathematical gradient formulations provide the foundation for implementing efficient backward pass computation.
+\item However, direct implementation encounters significant memory bottlenecks when dealing with large sequence lengths.
+\item Consider the memory requirements for intermediate matrices:
+\end{itemize}
+\begin{equation*}
+  \mP, \mS, \frac{\partial L}{\partial \mP}, \frac{\partial L}{\partial \mS} \in R^{T \times T}
+\end{equation*}
+\begin{itemize}
+\item For typical applications where $T \gg d$, storing these $T \times T$ matrices becomes prohibitively expensive.
+\end{itemize}
+\end{frame}
+
+\begin{frame}[allowframebreaks]
+\frametitle{Block-Based Algorithm Design Strategy}
+\begin{itemize}
+\item Given the memory constraint:
+\begin{equation*}
+  d \leq M \leq T \times d
+\end{equation*}
+where $M$ represents the available fast memory capacity, we cannot compute entire gradient matrices simultaneously.
+\item The solution is to employ a block-wise computation strategy that processes gradients in manageable chunks.
+\item We assume that matrices $\mP$, $\mS$, $\mO$, and gradient
+\begin{equation*}
+  \frac{\partial L}{\partial \mO}
+\end{equation*}
+are stored in secondary memory (HBM).
+\item The algorithm computes gradients
+\begin{equation*}
+  \frac{\partial L}{\partial \mQ}, \quad \frac{\partial L}{\partial \mK}, \quad \text{and} \quad \frac{\partial L}{\partial \mV}
+\end{equation*}
+by loading only necessary matrix blocks into fast memory at each computational step.
+\item This approach ensures memory usage remains within constraint $M$ while maintaining mathematical correctness of the derived gradient formulations.
 \end{itemize}
 \end{frame}
 
 \begin{frame}[allowframebreaks]
 \frametitle{Block Size Derivation for Standard Attention Backward Pass}
 \begin{itemize}
-\item For computing $|B|$ rows of 
-\begin{equation*}
-  \frac{\partial L}{\partial \mV}
-\end{equation*}
-: we need 3 blocks in the main memory
+\item To implement a memory-efficient gradient computation, we partition matrices into blocks and process them sequentially.
 
-  \begin{enumerate}
-  \item Block 1:
+\item Let $|B_r|$ be the row block size. Our goal is to derive the maximum possible $|B_r|$ that fits within fast memory constraints ($M$).
+
+\framebreak
+\item For each gradient in the backward pass, we analyze the peak memory required. This typically involves holding two input blocks and one output block in fast memory simultaneously.
+\framebreak
+\item The blocks required simultaneously for each gradient are:
+
+\begin{enumerate}
+\item Gradient w.r.t. $\mV$:
   \begin{equation*}
-    \frac{\partial L}{\partial \mV_{B,:}} \in \R^{|B| \times d}
+    \begin{split}
+    &\frac{\partial L}{\partial \mV_{B_r,:}}, \frac{\partial L}{\partial \mO_{B_r,:}} \in R^{|B_r| \times d} \text{ and } \\
+    &\mP_{B_r,B_r} \in R^{|B_r| \times |B_r|}
+    \end{split}
   \end{equation*}
-  \item Block 2:
+
+\item Gradient w.r.t. $\mP$:
   \begin{equation*}
-    \mP_{:,B} \in \R^{|B| \times |B|} \text{ (loaded from HBM)}
+    \begin{split}
+    &\frac{\partial L}{\partial \mP_{B_r,B_r}} \in R^{|B_r| \times |B_r|} \text{ and } \\
+    &\mV_{B_r,:}, \frac{\partial L}{\partial \mO_{B_r,:}} \in R^{|B_r| \times d}
+    \end{split}
   \end{equation*}
-  \item Block 3:
+
+\item Gradient w.r.t. $\mS$:
   \begin{equation*}
-    \frac{\partial L}{\partial \mO_{B,:}} \in \R^{|B| \times d} \text{ (loaded from HBM)}
+    \begin{split}
+    &\frac{\partial L}{\partial \mS_{B_r,B_r}}, \frac{\partial L}{\partial \mP_{B_r,B_r}} \text{ and } \mP_{B_r,B_r} \in R^{|B_r| \times |B_r|}
+    \end{split}
   \end{equation*}
-  \end{enumerate}
-  From constraints 
+
+\item Gradient w.r.t. $\mQ$:
   \begin{equation*}
-    |B|d \leq \frac{M}{3} \text{ and } |B|^2 \leq \frac{M}{3}
+    \begin{split}
+    &\frac{\partial L}{\partial \mQ_{B_r,:}}, \mK_{B_r,:} \in R^{|B_r| \times d}, \text{ and }\\
+    &\frac{\partial L}{\partial \mS_{B_r,B_r}} \in R^{|B_r| \times |B_r|}
+    \end{split}
   \end{equation*}
-  we get:
+
+\item Gradient w.r.t. $\mK$:
   \begin{equation*}
-    |B| = \min\left(\lfloor \frac{M}{3d} \rfloor, \lfloor \sqrt{\frac{M}{3}} \rfloor\right)
+    \begin{split}
+    &\frac{\partial L}{\partial \mK_{B_r,:}}, \mQ_{B_r,:} \in R^{|B_r| \times d} \text{ and }\\
+    &\frac{\partial L}{\partial \mS_{B_r,B_r}} \in R^{|B_r| \times |B_r|}
+    \end{split}
   \end{equation*}
+\end{enumerate}
+
+\item The worst-case memory footprint requires space for three blocks. For a simplified analysis, we assume each takes up to $M/3$ of the fast memory. This gives us the constraints:
+  \begin{equation*}
+    |B_r|d \leq \frac{M}{3} \text{ and } |B_r|^2 \leq \frac{M}{3}
+  \end{equation*}
+
+\item Solving these constraints yields the block size:
+  \begin{equation*}
+    |B_r| = \min\left(\lfloor \frac{M}{3d} \rfloor, \lfloor \sqrt{\frac{M}{3}} \rfloor\right)
+  \end{equation*}
+
 \end{itemize}
 \end{frame}
 
 \begin{frame}[allowframebreaks]
 \frametitle{Standard Attention Backward Algorithm}
-Let $N_b = \lceil \frac{T}{|B|} \rceil$ be the number of blocks. We have the following algorithm:
-
 \begin{itemize}
-\item Step 1: Gradient w.r.t. V
+\item Let $N_b = \lceil T / |B_r| \rceil$ be the number of blocks.
+\item We present the block-wise algorithm for computing attention gradients while respecting memory constraints.
+\end{itemize}
+\framebreak
+\begin{itemize}
+\item Step 1: We compute the gradient with respect to V as follows.
   \begin{itemize}
   \item For $j = 1, \ldots, N_b$ (column blocks of V, where $J_j$ denotes the $j$-th block)
     \begin{itemize}
@@ -1336,8 +1508,8 @@ Let $N_b = \lceil \frac{T}{|B|} \rceil$ be the number of blocks. We have the fol
     \end{itemize}
   \end{itemize}
 
-\vspace{0.5cm}
-\item Step 2: Gradient w.r.t. P
+\framebreak
+\item Step 2: We compute the gradient with respect to P as follows.
   \begin{itemize}
   \item For $i = 1, \ldots, N_b$ (row blocks of P)
     \begin{itemize}
@@ -1350,12 +1522,16 @@ Let $N_b = \lceil \frac{T}{|B|} \rceil$ be the number of blocks. We have the fol
     \end{itemize}
   \end{itemize}
 
-\vspace{1cm}
-\item Step 3: Gradient w.r.t. S
+\framebreak
+\item Step 3: We compute the gradient with respect to S as follows.
   \begin{itemize}
   \item For $i = 1, \ldots, N_b$
     \begin{itemize}
-    \item Compute row-wise sum: $\text{sum}_{I_i} = \sum_{j=1}^T \frac{\partial L}{\partial P_{ij}} P_{ij}$ (element-wise product and sum)
+    \item Compute row-wise sum:
+    \begin{equation*}
+      \text{sum}_{I_i} = \sum_{j=1}^T \frac{\partial L}{\partial P_{ij}} P_{ij}
+    \end{equation*}
+    where the operation involves element-wise product and summation.
     \item For $j = 1, \ldots, N_b$
       \begin{equation*}
         \frac{\partial L}{\partial \mS_{I_i,J_j}} = \mP_{I_i,J_j} \odot \left( \frac{\partial L}{\partial \mP_{I_i,J_j}} - \text{sum}_{I_i} \right)
@@ -1364,7 +1540,8 @@ Let $N_b = \lceil \frac{T}{|B|} \rceil$ be the number of blocks. We have the fol
     \end{itemize}
   \end{itemize}
 
-\item Step 4: Gradient w.r.t. K
+\framebreak
+\item Step 4: We compute the gradient with respect to K as follows.
   \begin{itemize}
   \item For $j = 1, \ldots, N_b$ (column blocks of K)
     \begin{itemize}
@@ -1377,7 +1554,8 @@ Let $N_b = \lceil \frac{T}{|B|} \rceil$ be the number of blocks. We have the fol
     \end{itemize}
   \end{itemize}
 
-\item Step 5: Gradient w.r.t. Q
+\framebreak
+\item Step 5: We compute the gradient with respect to Q as follows.
   \begin{itemize}
   \item For $i = 1, \ldots, N_b$ (row blocks of Q)
     \begin{itemize}
@@ -1395,16 +1573,17 @@ Let $N_b = \lceil \frac{T}{|B|} \rceil$ be the number of blocks. We have the fol
 \begin{frame}[allowframebreaks]
 \frametitle{Computational Complexity Analysis}
 \begin{itemize}
-\item Steps 1, 2, 4, 5:
+\item The computational complexity for Steps 1, 2, 4, and 5 is:
   \begin{equation*}
-    O(N_b) \times O(N_b) \times O(|B|^2 \times d) = O(T^2 \times d)
+    O(N_b) \times O(N_b) \times O(|B_r|^2 \times d) = O(T^2 \times d)
   \end{equation*}
-\item Step 3:
+\item The computational complexity for Step 3 is:
   \begin{equation*}
-    O(N_b) \times O(N_b) \times O(|B|^2) = O(T^2 \times |B|^2)
+    O(N_b) \times O(N_b) \times O(|B_r|^2) = O(T^2)
   \end{equation*}
+  since $N_b \cdot |B_r| = T$.
 
-\item Total Complexity: 
+\item The total computational complexity is dominated by the matrix operations in Steps 1, 2, 4, and 5:
   \begin{equation*}
     O(T^2 \times d)
   \end{equation*}
@@ -1414,12 +1593,12 @@ Let $N_b = \lceil \frac{T}{|B|} \rceil$ be the number of blocks. We have the fol
 \begin{frame}[allowframebreaks]
 \frametitle{I/O Analysis}
 \begin{itemize}
-\item From algorithm, the I/O bottleneck is to read $\mP$ and write 
+\item From the algorithm analysis, the I/O bottleneck arises from reading $\mP$ and writing 
 \begin{equation*}
 \frac{\partial L}{\partial \mP} \text{ and } \frac{\partial L}{\partial \mS}
 \end{equation*}
 
-  \item Total I/O:
+  \item The total I/O complexity is:
   \begin{equation*}
     O(T^2)
   \end{equation*}
